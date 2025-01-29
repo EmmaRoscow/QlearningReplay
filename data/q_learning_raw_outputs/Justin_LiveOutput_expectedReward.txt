@@ -1,0 +1,36 @@
+26-Apr-2022 06:31:37 - Beginning optimisation
+26-Apr-2022 06:58:14 optimisation for ksamples = 15
+resulting parameter values: 0.002271 1.000000 2.610898 9.638698 9.664160
+training score: 9.678831
+test score: 9.759125
+
+26-Apr-2022 07:29:55 optimisation for ksamples = 20
+resulting parameter values: 0.001979 0.999991 2.648596 9.924087 4.489878
+training score: 9.859026
+test score: 9.925390
+
+26-Apr-2022 08:05:41 optimisation for ksamples = 30
+resulting parameter values: 0.001633 1.000000 2.643757 5.696065 3.380197
+training score: 10.106512
+test score: 10.253989
+
+26-Apr-2022 08:47:00 optimisation for ksamples = 40
+resulting parameter values: 0.001672 1.000000 2.520476 8.982052 8.308704
+training score: 10.237396
+test score: 10.397997
+
+26-Apr-2022 09:35:56 optimisation for ksamples = 50
+resulting parameter values: 0.000925 0.081448 3.598540 9.253072 1.005433
+training score: 10.599549
+test score: 10.585247
+
+26-Apr-2022 10:52:24 optimisation for ksamples = 75
+resulting parameter values: 0.000762 0.000000 3.623736 7.929399 8.412508
+training score: 10.482155
+test score: 10.441164
+
+26-Apr-2022 12:34:03 optimisation for ksamples = 100
+resulting parameter values: 0.000669 0.000000 3.616070 9.971307 7.778866
+training score: 10.254498
+test score: 10.305072
+

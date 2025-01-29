@@ -1,0 +1,27 @@
+28-Apr-2022 21:42:20 - Beginning optimisation
+28-Apr-2022 21:47:22 - Beginning optimisation
+28-Apr-2022 22:00:15 GlobalSearch for ksamples = 0
+resulting parameter values: 0.002560 1.000000 2.774917 training score: 9.275134
+
+test score: 9.275134
+
+28-Apr-2022 22:18:22 GlobalSearch for ksamples = 1
+resulting parameter values: 0.002472 1.000000 2.794722 1.150982 training score: 9.271147
+
+test score: 9.303460
+
+28-Apr-2022 22:40:08 GlobalSearch for ksamples = 3
+resulting parameter values: 0.002510 1.000000 2.763595 8.902543 training score: 9.318686
+
+test score: 9.358760
+
+28-Apr-2022 23:05:13 GlobalSearch for ksamples = 5
+resulting parameter values: 0.002513 0.999994 2.741692 3.786838 training score: 9.317360
+
+test score: 9.427969
+
+28-Apr-2022 23:30:46 GlobalSearch for ksamples = 10
+resulting parameter values: 0.002314 1.000000 2.751942 1.442025 training score: 9.512690
+
+test score: 9.574945
+
