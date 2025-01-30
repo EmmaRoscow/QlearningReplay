@@ -4,28 +4,30 @@ Contains code and data for reproducing the analyses presented in Roscow et al. 2
 
 Repo structure is as follows.
 
-QlearningReplay/
+```
+📂 QlearningReplay/
 │
-├─ code/
-│  ├─ ephys/  # Code for analysing electrophysiological data
-│  │  ├─ tests/	 # Unit tests for the ephys code
+├─ 📂 code/
+│  ├─ 📂 ephys/  # Code for analysing electrophysiological data
+│  │  ├─ 📂 tests/	 # Unit tests for the ephys code
 │  │  └─ main_ephys_script.m  # Script for analysing ephys data from scratch
 │  │
-│  └─ q_learning_optimisation/  # Code for fitting Q-learning parameters to behavioural data
+│  └─ 📂 q_learning_optimisation/  # Code for fitting Q-learning parameters to behavioural data
 │
-├─ code_for_reproducing_figures/
-│  └─ utils/
+├─ 📂 code_for_reproducing_figures/
+│  └─ 📂 utils/
 │
-├─ data/
-│  ├─ behavioural_data/
-│  ├─ ephys_data/
-│  ├─ q_learning_raw_outputs/
-│  ├─ q_learning_results/
+├─ 📂 data/
+│  ├─ 📂 behavioural_data/
+│  ├─ 📂 ephys_data/
+│  ├─ 📂 q_learning_raw_outputs/
+│  ├─ 📂 q_learning_results/
 │  └─ explainedVarianceReactivationAnalysis.mat	# Custom object containing the processed, analysed ephys data
 │
 ├─ .gitignore
 │
 └─ README.md
+```
 
 Recommended use:
 * Run all scripts from the base directory (rpe-replay), and add all folders and subfolders to the path
