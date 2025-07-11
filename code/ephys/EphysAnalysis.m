@@ -154,7 +154,7 @@ classdef EphysAnalysis
         
         
         % Select reward-responsive cells for analysis
-        function rewardResponsive = selectRewardResponsiveCells(obj, spiketimes, rewardArrivalTimes, CPEntryTimes)
+        function rewardResponsive = selectRewardResponsiveCells(obj, spiketimes, rewardArrivalTimes, CPEntryTimes, varargin)
             
             % Computes a binary vector indicating which cells are
             % statistically responsive to reward-related events, if used as
@@ -162,19 +162,43 @@ classdef EphysAnalysis
             % vector of ones
             % 
             %   Inputs
-            %       - spiketimes:               cell array of spiketimes, one cell per neuron
+            %       - spiketimes:              cell array of spiketimes, one cell per neuron
             %       - rewardArrivalTimes:   timestamps of reward-related events
             %       - CPEntryTimes:         timestamps of control events, specifically entry to the central platform
+            %       - varargin:                  optionally, 'rewardResponsivity' along with 'all' (to select cells responsive 
+            %                                       to the period before and/or after arrival at reward location), 'beforeArrival' (to
+            %                                       select cells responsive to the period before arrival), or 'afterArrival' (to select 
+            %                                       cells responsive to the period after arrival) 
             % 
             %   Outputs
             %       -  rewardResponsive:   binary vector with the same length as spiketimes, indicating the cells to be
             %                                        included according to the inclusion criteria for reward-responsivity
+            
+            % Process type of reward-responsivity
+            p = inputParser;
+            addParameter(p, 'rewardResponsivity', 'all', @(x) strcmp(x, 'all') || strcmp(x, 'beforeArrival') || strcmp(x, 'afterArrival') || strcmp(x, 'beforeArrivalOnly') || strcmp(x, 'afterArrivalOnly'));
+            parse(p, varargin{:});
+            rewardResponsivity = p.Results.rewardResponsivity;
+
             
             nCells = length(spiketimes);
             
             if obj.inclusionCriteria.cells.rewardResponsive
                 
                 rewardResponsive = obj.identifyRewardResponsiveCells(spiketimes, rewardArrivalTimes, CPEntryTimes);
+
+                switch rewardResponsivity
+                    case 'all'
+                        rewardResponsive = rewardResponsive.rewardResponsive;
+                    case 'beforeArrival'
+                        rewardResponsive = rewardResponsive.rewardResponsiveBeforeRewardArrival;
+                    case 'beforeArrivalOnly'
+                        rewardResponsive = rewardResponsive.rewardResponsiveBeforeRewardArrival & ~rewardResponsive.rewardResponsive.rewardResponsiveAfterRewardArrival;
+                    case 'afterArrival'
+                        rewardResponsive = rewardResponsive.rewardResponsiveAfterRewardArrival;
+                    case 'afterArrivalOnly'
+                        rewardResponsive = rewardResponsive.rewardResponsiveAfterRewardArrival & ~rewardResponsive.rewardResponsiveBeforeRewardArrival;
+                end
                 
             else
                 
@@ -199,8 +223,15 @@ classdef EphysAnalysis
             %       - CPEntryTimes:         timestamps of control events, specifically entry to the central platform
             % 
             %   Outputs
-            %       -  rewardResponsive:   binary vector with the same length as spiketimes, indicating the cells to be
+            %       -  rewardResponsive:   structure with the following fields
+            %         - rewardResponsive:  binary vector with the same length as spiketimes, indicating the cells to be
             %                                        included according to the inclusion criteria for reward-responsivity
+            %         - rewardResponsiveBeforeRewardArrival:  binary vector with the same length as spiketimes, 
+            %                                        indicating the cells that show significantly different reward-related firing
+            %                                        in the period before arrival at the reward location
+            %         - rewardResponsiveAfterRewardArrival:  binary vector with the same length as spiketimes, 
+            %                                        indicating the cells that show significantly different reward-related firing
+            %                                        in the period after arrival at the reward location
             
             function bins = getBins(timestamps, offsets)
                 % Computes bin edges as offsets relative to trial timestamps
@@ -219,6 +250,8 @@ classdef EphysAnalysis
             
                 % Find reward-responsive cells
                 rewardResponsive = zeros(1, nCells);
+                rewardResponsiveBeforeRewardArrival = zeros(1, nCells);
+                rewardResponsiveAfterRewardArrival = zeros(1, nCells);
                 for iCell = 1:nCells
                     
                     % Pre-allocate spike counts for all relevant bins
@@ -228,8 +261,11 @@ classdef EphysAnalysis
                     % Define reward bins (1s before to 1s after reward arrival time) 
                     % and control bins (0.75s to 0s before  central
                     % platform arrival time) for all trials
-                    RBinStarts = getBins(rewardArrivalTimes(:), -1:0.25:0.75);
-                    RBinEnds = getBins(rewardArrivalTimes(:), -0.75:0.25:1);
+                    binSize = 0.25;
+                    relativeBinStarts = -1:binSize:0.75;
+                    relativeBinEnds = relativeBinStarts + binSize;
+                    RBinStarts = getBins(rewardArrivalTimes(:), relativeBinStarts);
+                    RBinEnds = getBins(rewardArrivalTimes(:), relativeBinEnds);
                     CPBinStarts = getBins(CPEntryTimes(:), -0.75:0.25:-0.25);
                     CPBinEnds = getBins(CPEntryTimes(:), -0.5:0.25:0);
                     
@@ -247,13 +283,20 @@ classdef EphysAnalysis
                         alpha = 0.05;
                         if sum(pvals < alpha)==3
                             rewardResponsive(iCell) = 1;
+                            if ismember(iBin, find(relativeBinEnds <= 0))
+                                rewardResponsiveBeforeRewardArrival(iCell) = 1;
+                            elseif ismember(iBin, find(relativeBinStarts >= 0))
+                                rewardResponsiveAfterRewardArrival(iCell) = 1;
+                            end
                         end
                     end
                     
                 end
-                    
-            fprintf('%i cells out of %i are reward-responsive\n', sum(rewardResponsive), length(rewardResponsive))
-            rewardResponsive = boolean(rewardResponsive);
+                            
+            % Return results as a struct
+            rewardResponsive = struct('rewardResponsive', boolean(rewardResponsive),...
+                                                  'rewardResponsiveBeforeRewardArrival', boolean(rewardResponsiveBeforeRewardArrival),...
+                                                  'rewardResponsiveAfterRewardArrival', boolean(rewardResponsiveAfterRewardArrival));
         end
         
         
@@ -285,14 +328,22 @@ classdef EphysAnalysis
             nRats = length(obj.inclusionCriteria.rats);
             perRatRewardResponsiveRate = cell2struct(mat2cell(zeros(1, nRats), 1, ones(1, nRats)), obj.inclusionCriteria.rats, 2);
             overallRewardResponsiveTotal = 0;
+            overallRewardResponsiveBeforeArrivalTotal = 0;
+            overallRewardResponsiveAfterArrivalTotal = 0;
+            overallRewardResponsiveBeforeAndAfterArrivalTotal = 0;
             overallTotal = 0;
+            
+            allSessions = obj.getAllAvailableSessions();
 
             for iRat = 1:length(obj.inclusionCriteria.rats)
 
                 ratName = obj.inclusionCriteria.rats{iRat};
-                ratSessions = obj.sessionsForBroadAnalysis.(ratName);
+                ratSessions = allSessions.(ratName);
 
                 perRatRewardResponsive = 0;
+                perRatRewardResponsiveBeforeArrival = 0;
+                perRatRewardResponsiveAfterArrival = 0;
+                perRatRewardResponsiveBeforeAndAfterArrival = 0;
                 perRatTotal = 0;
 
                 for iSess = 1:numel(ratSessions)
@@ -309,13 +360,19 @@ classdef EphysAnalysis
                     rewardResponsive = obj.identifyRewardResponsiveCells(vStrSpiketimes, rewardArrivalTimes, CPEntryTimes);
                     
                     % Update per-rat counts
-                    perRatRewardResponsive = perRatRewardResponsive + sum(rewardResponsive);
-                    perRatTotal = perRatTotal + length(rewardResponsive);
+                    perRatRewardResponsive = perRatRewardResponsive + sum(rewardResponsive.rewardResponsive);
+                    perRatRewardResponsiveBeforeArrival = perRatRewardResponsiveBeforeArrival + sum(rewardResponsive.rewardResponsiveBeforeRewardArrival);
+                    perRatRewardResponsiveAfterArrival = perRatRewardResponsiveAfterArrival + sum(rewardResponsive.rewardResponsiveAfterRewardArrival);
+                    perRatRewardResponsiveBeforeAndAfterArrival = perRatRewardResponsiveBeforeAndAfterArrival + sum(rewardResponsive.rewardResponsiveBeforeRewardArrival & rewardResponsive.rewardResponsiveAfterRewardArrival);
+                    perRatTotal = perRatTotal + length(rewardResponsive.rewardResponsive);
 
                 end
                 
                 % Update overall counts
                 overallRewardResponsiveTotal = overallRewardResponsiveTotal + perRatRewardResponsive;
+                overallRewardResponsiveBeforeArrivalTotal = overallRewardResponsiveBeforeArrivalTotal + perRatRewardResponsiveBeforeArrival;
+                overallRewardResponsiveAfterArrivalTotal = overallRewardResponsiveAfterArrivalTotal + perRatRewardResponsiveAfterArrival;
+                overallRewardResponsiveBeforeAndAfterArrivalTotal = overallRewardResponsiveBeforeAndAfterArrivalTotal + perRatRewardResponsiveBeforeAndAfterArrival;
                 overallTotal = overallTotal + perRatTotal;
                 perRatRewardResponsiveRate.(ratName) = perRatRewardResponsive / perRatTotal;
 
@@ -330,6 +387,21 @@ classdef EphysAnalysis
                 overallRewardResponsiveTotal,...
                 overallTotal,...
                 overallRewardResponsiveTotal / overallTotal * 100)
+            
+            fprintf('%i out of %i (%.0f%%) reward-responsive ventral striatal cells show significant responses before arrival at reward location\n',...
+                overallRewardResponsiveBeforeArrivalTotal,...
+                overallRewardResponsiveTotal,...
+                overallRewardResponsiveBeforeArrivalTotal / overallRewardResponsiveTotal * 100)
+            
+            fprintf('%i out of %i (%.0f%%) reward-responsive ventral striatal cells show significant responses after arrival at reward location\n',...
+                overallRewardResponsiveAfterArrivalTotal,...
+                overallRewardResponsiveTotal,...
+                overallRewardResponsiveAfterArrivalTotal / overallRewardResponsiveTotal * 100)
+            
+            fprintf('%i out of %i (%.0f%%) reward-responsive ventral striatal cells show significant responses before and after arrival at reward location\n',...
+                overallRewardResponsiveBeforeAndAfterArrivalTotal,...
+                overallRewardResponsiveTotal,...
+                overallRewardResponsiveBeforeAndAfterArrivalTotal / overallRewardResponsiveTotal * 100)
 
             fprintf('On average %.2f%% ± %.1f%% ventral striatal units per rat show significant reward-related firing\n',...
                 meanPerRatRewardRepsonsiveRate * 100,...
@@ -537,36 +609,40 @@ classdef EphysAnalysis
             % Outputs
             %   - firingRate:  z-scored firing rate, of same size as input firingRate
             
-            % Calculate mean and standard deviation of reference data
-            if (ndims(firingRate)~=ndims(reference)) || (mean(size(firingRate)==size(reference)) < 1)
-                % Calculate mu and sigma for each cell and repeat for all
-                % trials corresponding to the cell
-                mu = nanmean(reference, 2);
-                sigma = nanstd(reference, 0, 2);
-                if ndims(firingRate)==2
-                    mu = repmat(mu', size(firingRate, 1), size(firingRate, 2));
-                    sigma = repmat(sigma', size(firingRate, 1), size(firingRate, 2));
-                elseif ndims(firingRate)==3
-                    mu = repmat(mu', size(firingRate, 1), 1, size(firingRate, 3));
-                    sigma = repmat(sigma', size(firingRate, 1), 1, size(firingRate, 3));
+            if numel(firingRate)>0
+            
+                % Calculate mean and standard deviation of reference data
+                if (ndims(firingRate)~=ndims(reference)) || (mean(size(firingRate)==size(reference)) < 1)
+                    % Calculate mu and sigma for each cell and repeat for all
+                    % trials corresponding to the cell
+                    mu = nanmean(reference, 2);
+                    sigma = nanstd(reference, 0, 2);
+                    if ndims(firingRate)==2
+                        mu = repmat(mu', size(firingRate, 1), size(firingRate, 2));
+                        sigma = repmat(sigma', size(firingRate, 1), size(firingRate, 2));
+                    elseif ndims(firingRate)==3
+                        mu = repmat(mu', size(firingRate, 1), 1, size(firingRate, 3));
+                        sigma = repmat(sigma', size(firingRate, 1), 1, size(firingRate, 3));
+                    end
+                elseif min(size(firingRate))==1 && min(size(reference))==1
+                    mu = nanmean(reference);
+                    sigma = nanstd(reference);
+                elseif (ndims(firingRate)==ndims(reference)) || (mean(size(firingRate)==size(reference)) == 1)
+                    % Calculate mu and sigma for each time window
+                    mu = nanmean(reference, 3);
+                    sigma = nanstd(reference, 0, 3);
+                    mu = repmat(mu, 1, 1, size(firingRate, 3));
+                    sigma = repmat(sigma, 1, 1, size(firingRate, 3));
                 end
-            elseif min(size(firingRate))==1 && min(size(reference))==1
-                mu = nanmean(reference);
-                sigma = nanstd(reference);
-            elseif (ndims(firingRate)==ndims(reference)) || (mean(size(firingRate)==size(reference)) == 1)
-                % Calculate mu and sigma for each time window
-                mu = nanmean(reference, 3);
-                sigma = nanstd(reference, 0, 3);
-                mu = repmat(mu, 1, 1, size(firingRate, 3));
-                sigma = repmat(sigma, 1, 1, size(firingRate, 3));
+
+                % Z-score
+                firingRate = (firingRate - mu) ./ sigma;
+
+                % Cap at 100
+                firingRate = min(firingRate, 100);
+
             end
             
-            % Z-score
-            firingRate = (firingRate - mu) ./ sigma;
-            
-            % Cap at 100
-            firingRate = min(firingRate, 100);
-                        
         end
         
     end

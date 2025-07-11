@@ -27,6 +27,14 @@ colourscheme.REV_secondary = [0 0 0];
 colourscheme.insignificant_primary = [0.5 0.5 0.5];
 colourscheme.insignificant_secondary = [0.5 0.5 0.5];
 
+% Additional palette for expected reward
+colourscheme.medium_exp_reward_primary2 = [229 195 246]/255;
+colourscheme.high_exp_reward_primary2 = [151 15 219]/255;
+colourscheme.medium_exp_reward_secondary2 = colourscheme.high_exp_reward_primary2;
+colourscheme.high_exp_reward_secondary2 = colourscheme.medium_exp_reward_primary2;
+colourscheme.insignificant_primary2 = colourscheme.insignificant_primary;
+colourscheme.insignificant_secondary2 = colourscheme.insignificant_secondary;
+
 % Brain areas
 colourscheme.vStr = [0.9 0.5 0.9];
 colourscheme.CA1 = [0.5 0.9 0.5];

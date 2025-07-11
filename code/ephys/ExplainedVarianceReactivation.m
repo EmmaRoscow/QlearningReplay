@@ -3,11 +3,14 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
     properties (Access = public)
         CA1_vStr
         perCellContributions
+        perCellContributionsVStr
         vStr
         CA1
         data
         meanEventTriggeredActivity
+        meanEventTriggeredActivityVStr
         taskCoactivity
+        taskCoactivityVStr
     end
     
     methods(Access = public)
@@ -324,7 +327,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                             rippleStartPOST = rippleStart(includePOST);
                             
                             timeBefore = 0.00; timeAfter = 0.20;
-                            if length(rippleStartPRE) == 1 || length(spiketimes) == 1
+                            if length(spiketimes) == 1
                                 dontPermute = true;
                             else
                                 dontPermute = false;
@@ -739,6 +742,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             if intraarea
                [Y, X] = ndgrid(includeCells, includeCells);
                exclude_cellPairs = [X(:), Y(:)];
+               exclude_cellPairs = exclude_cellPairs(diff(exclude_cellPairs')>0, :);
 
            else
                 [Y, X] = ndgrid(1:data.nCA1Units, includeCells);
@@ -861,7 +865,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             
             % Process paths where data is stored
             p = inputParser;
-            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys'), @(x) ischar(x) || isstring(x));
+            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
             parse(p, varargin{:});
             dataPath = p.Results.dataPath;
             
@@ -959,7 +963,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
 
             % Process paths where data is stored
             p = inputParser;
-            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys'), @(x) ischar(x) || isstring(x));
+            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
             parse(p, varargin{:});
             dataPath = p.Results.dataPath;
             
@@ -969,6 +973,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             % Struct for storing EV and REV scores
             EV = cell2struct(cell(1, length(obj.inclusionCriteria.rats)), cellfun(@(x) x, obj.inclusionCriteria.rats, 'UniformOutput', false), 2);
             REV = cell2struct(cell(1, length(obj.inclusionCriteria.rats)), cellfun(@(x) x, obj.inclusionCriteria.rats, 'UniformOutput', false), 2);
+            perCellContributionsVStr = struct();
             
             for iRat = 1:length(obj.inclusionCriteria.rats)
                 
@@ -991,7 +996,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     includeCells = [includeCellsNAc includeCellsCA1];
                     spiketimes = data.spiketimes(includeCells);
                     binnedfr = data.binnedfr(includeCells, :);
-                    nNAcUnits = nNAcUnits;
+                    nNAcUnits = data.nNAcUnits;
+                    nUnits = data.nNAcUnits;
                                         
                     % Filter ripples according to analysis config
                     [rippleStart, rippleStop, ripplePeak] = obj.filterRipples(data);
@@ -1000,6 +1006,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     exclude = [];
                     EVData = struct('spiketimes', {spiketimes},...
                         'nNAcUnits', [],...
+                        'nUnits', nUnits,...
                         'binnedfr', binnedfr);
                     EVTimestamps = struct('startEndTimes', data.startEndTimes,...
                         'rippleStart', rippleStart,...
@@ -1010,7 +1017,20 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     EVAnalysisConfig = struct('exclude', exclude,...
                         'postDuration', obj.analysisConfig.postDuration,...
                         'rippleActivityMode', obj.analysisConfig.rippleActivityMode);
-                    [EV0, REV0, data.binnedfrPRE, data.binnedfrPOST, data.binnedfrTASK] = obj.explainedVariance(EVData, EVTimestamps, EVAnalysisConfig);
+                    [EV0, REV0, EVData.binnedfrPRE, EVData.binnedfrPOST, EVData.binnedfrTASK, EVData.preCC, EVData.taskCC, EVData.postCC] = obj.explainedVariance(EVData, EVTimestamps, EVAnalysisConfig);
+                    
+                    % Calculate contribution of each cell pair to the session's EV-REV
+                    EV_REV0 = EV0-REV0;                    
+                    if EV_REV0 > 0 && ismember(session, obj.sessionsForSpecificAnalysis.(ratName))
+                        includeStrCells = obj.selectRewardResponsiveCells(EVData.spiketimes, rewardArrivalTimes, CPEntryTimes);
+                        includeCells = find(boolean(includeStrCells));
+                        EVData.nNAcUnits = data.nNAcUnits;
+                        perCellContributionsVStr.(ratName){session} = obj.calculatePerCellPairContributions(EVData, includeCells, true, EV_REV0);                        
+                   else
+                     perCellContributionsVStr.(ratName){session} = NaN;
+                                
+                   end
+
                     
                     % Store result
                     EV.(ratName) = [EV.(ratName) EV0];
@@ -1022,6 +1042,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             
             obj.vStr.EV = EV;
             obj.vStr.REV = REV;
+            obj.perCellContributionsVStr = perCellContributionsVStr;
             
         end
         
@@ -1036,7 +1057,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             
             % Process paths where data is stored
             p = inputParser;
-            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys'), @(x) ischar(x) || isstring(x));
+            addParameter(p, 'dataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
             parse(p, varargin{:});
             dataPath = p.Results.dataPath;
             
@@ -1128,7 +1149,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             axes_properties();
             
             % Plot boxes
-            h = figure('Position', [680 558 454 420]); hold on
+            h = figure('Position', [680 558 454 420], 'Name', 'EV and REV within and between CA1 and vStr'); hold on
             x = 1;
             for area = {'CA1', 'vStr', 'CA1_vStr'}
                 for explainedVar = {'EV', 'REV'}
@@ -1162,17 +1183,34 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
         
         % Use drop-one-cell-pair-out to identify cell pairs that are
         % significantly reactivated and controls with which to compare them
-        function obj = getSignificantlyReactivatedCellPairs(obj)
+        function obj = getSignificantlyReactivatedCellPairs(obj, varargin)
             
             % Uses the previously calculated contribution of each cell pair to the session's EV-REV reactivation metric to identify cell
             % pairs that are significantly coreactivated during POST, and matching control cell pairs that are not coreactivated.
             % Returns a list of cell pairs that belong to the two groups
+            % 
+            % Inputs
+            %   - cellPairs:        optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
+            
+            % Process which cell contributions to use
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
                                     
             % Find upper and lower quartiles of contributions to EV-REV, per session
-            if ~isstruct(obj.perCellContributions)
+            if strcmp(cellPairs, 'interarea') && ~isstruct(obj.perCellContributions)
+                error('Run EV-REV analysis first to get per-cell or per-cell-pair contributions to EV-REV')
+            elseif strcmp(cellPairs, 'vStr') && ~isstruct(obj.perCellContributionsVStr)
                 error('Run EV-REV analysis first to get per-cell or per-cell-pair contributions to EV-REV')
             end
-            fields = fieldnames(obj.perCellContributions);
+            switch cellPairs
+                case 'interarea'
+                    perCellContributions = obj.perCellContributions;
+                case 'vStr'
+                    perCellContributions = obj.perCellContributionsVStr;
+            end
+            fields = fieldnames(perCellContributions);
             rats = fields(ismember(fields, obj.inclusionCriteria.rats));
             lowContributingCellPairs = cell2struct(cell(1, length(rats)), cellfun(@(x) x, rats, 'UniformOutput', false), 2);
             highContributingCellPairs = cell2struct(cell(1, length(rats)), cellfun(@(x) x, rats, 'UniformOutput', false), 2);
@@ -1180,16 +1218,16 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             % Quantile method, per session
             for iRat = 1:length(rats)
                 ratName = rats{iRat};
-                for session = 1:length(obj.perCellContributions.(ratName))
-                    if isstruct(obj.perCellContributions.(ratName){session})
+                for session = 1:length(perCellContributions.(ratName))
+                    if isstruct(perCellContributions.(ratName){session})
                         
                         % Get a cell array of all the correlation coefficients
-                        corrs = mat2cell([obj.perCellContributions.(ratName){session}.correlations], [3], ones(size(obj.perCellContributions.(ratName){session}, 2), 1));
+                        corrs = mat2cell([perCellContributions.(ratName){session}.correlations], [3], ones(size(perCellContributions.(ratName){session}, 2), 1));
                         % Get a vector of the differences
                         corrIncrease = cellfun(@(x) x(3) - x(1), corrs);
                         
-                        allCellPairs = reshape([obj.perCellContributions.(ratName){session}.cells], 2, [])';
-                        allCellPairContributions = [obj.perCellContributions.(ratName){session}.contribution];
+                        allCellPairs = reshape([perCellContributions.(ratName){session}.cells], 2, [])';
+                        allCellPairContributions = [perCellContributions.(ratName){session}.contribution];
  
                         q = obj.analysisConfig.reactivationQuantileThreshold;
                         switch obj.analysisConfig.controlCriterion
@@ -1212,8 +1250,14 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 end
             end
             
-            obj.perCellContributions.controlCellPairs = lowContributingCellPairs;
-            obj.perCellContributions.reactivatedCellPairs = highContributingCellPairs;
+            switch cellPairs
+                case 'interarea'
+                    obj.perCellContributions.controlCellPairs = lowContributingCellPairs;
+                    obj.perCellContributions.reactivatedCellPairs = highContributingCellPairs;
+                case 'vStr'
+                    obj.perCellContributionsVStr.controlCellPairs = lowContributingCellPairs;
+                    obj.perCellContributionsVStr.reactivatedCellPairs = highContributingCellPairs;
+            end
                                 
         end
 
@@ -1227,25 +1271,40 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             %   - event:                        'centralPlatform' or 'rewardArrival'; trial event around which to calculate the coactivity
             %   - behaviouralDataPath:   optional; specifies the path where .mat files of behavioural data are stored
             %   - ephysDataPath:          optional; specifies the path where .mat files of electrophysiological and related data are stored
-            
+            %   - cellPairs:                    optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
+            %   - trialSubset:                 optional; 'all' (default) for all legitimate entries to high-  and medium-reward-expectation trials; 
+            %                                      'rewarded_only' or 'unrewarded_only'
+
             
             % Check the event input
             assert(nargin >= 2, 'Not enough input arguments.');
             acceptableEvents = {'centralPlatform', 'rewardArrival'};
             assert(ismember(event, acceptableEvents), sprintf('Value of input argument event "%s" is not valid. Must be "centralPlatform" or "rewardArrival".', event));
             
-            % Check that there are reactivated cell pairs
-            assert(~isempty(obj.perCellContributions), 'Reactivted cell pairs have not been identified. Please run getSignificantlyReactivatedCellPairs() first.')
-            
-            % Process paths where data is stored
+            % Process optional input parameters
             p = inputParser;
             addParameter(p, 'behaviouralDataPath', fullfile('.', 'data', 'behavioural_data'), @(x) ischar(x) || isstring(x));
             addParameter(p, 'ephysDataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            addParameter(p, 'trialSubset', 'all', @(x) ischar(x) && (strcmp(x, 'all') || strcmp(x, 'rewarded_only')|| strcmp(x, 'unrewarded_only')));
             parse(p, varargin{:});
             behaviouralDataPath = p.Results.behaviouralDataPath;
             ephysDataPath = p.Results.ephysDataPath;
+            cellPairs = p.Results.cellPairs;
+            trialSubset = p.Results.trialSubset;
             
-            fields = fieldnames(obj.perCellContributions.reactivatedCellPairs);
+            switch cellPairs
+                case 'interarea'
+                    perCellContributions = obj.perCellContributions;
+                case 'vStr'
+                    perCellContributions = obj.perCellContributionsVStr;
+            end
+            
+            % Check that there are reactivated cell pairs
+            assert(~isempty(perCellContributions), 'Reactivated cell pairs have not been identified. Please run getSignificantlyReactivatedCellPairs() first.')
+            assert(isfield(perCellContributions, 'reactivatedCellPairs'), 'Reactivated cell pairs have not been identified. Please run getSignificantlyReactivatedCellPairs() first.')
+            
+            fields = fieldnames(perCellContributions.reactivatedCellPairs);
             rats = fields(ismember(fields, obj.inclusionCriteria.rats));
             
             % Create a structure for storing the results
@@ -1274,33 +1333,45 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 highExpTaskCoactivityHigh = [];
                 highExpTaskCoactivityLow = [];
                 
-                for session = 1:length(obj.perCellContributions.reactivatedCellPairs.(ratName))
+                for session = 1:length(perCellContributions.reactivatedCellPairs.(ratName))
                     
-                    if isempty(obj.perCellContributions.reactivatedCellPairs.(ratName){session})
+                    if isempty(perCellContributions.reactivatedCellPairs.(ratName){session})
                         continue
                     end
                     
                     filepath = fullfile(ephysDataPath, sprintf('Rat_%s', ratName(1)), sprintf('Session%i', session));
                     data = obj.loadData(filepath);
                     
-                    reactivatedCellPairs = obj.perCellContributions.reactivatedCellPairs.(ratName){session};
-                    controlCellPairs = obj.perCellContributions.controlCellPairs.(ratName){session};
+                    reactivatedCellPairs = perCellContributions.reactivatedCellPairs.(ratName){session};
+                    controlCellPairs = perCellContributions.controlCellPairs.(ratName){session};
                     reactivatedCellPairs = mat2cell(reactivatedCellPairs, ones(size(reactivatedCellPairs, 1), 1), 2);
                     controlCellPairs = mat2cell(controlCellPairs, ones(size(controlCellPairs, 1), 1), 2);
-                    reactivatedCellPairs = cellfun(@(x) [x(1) x(2)+data.nNAcUnits], reactivatedCellPairs, 'UniformOutput', false);
-                    controlCellPairs = cellfun(@(x) [x(1) x(2)+data.nNAcUnits], controlCellPairs, 'UniformOutput', false);
+                    switch cellPairs
+                        case 'interarea'
+                            reactivatedCellPairs = cellfun(@(x) [x(1) x(2)+data.nNAcUnits], reactivatedCellPairs, 'UniformOutput', false);
+                            controlCellPairs = cellfun(@(x) [x(1) x(2)+data.nNAcUnits], controlCellPairs, 'UniformOutput', false);
+                        case 'vStr'
+                            reactivatedCellPairs = cellfun(@(x) [x(1) x(2)], reactivatedCellPairs, 'UniformOutput', false);
+                            controlCellPairs = cellfun(@(x) [x(1) x(2)], controlCellPairs, 'UniformOutput', false);
+                    end
+                    
+                    % Include reward-responsive cells only (depending on cell inclusion criteria)
+                    [rewardArrivalTimes, CPEntryTimes, ~] = obj.loadRewardCPTimes(filepath);
+                    includeCells = obj.selectRewardResponsiveCells(data.spiketimes(1:data.nNAcUnits), rewardArrivalTimes, CPEntryTimes);
+                    includeReactivatedCellPairs = cellfun(@(x) ismember(x(1), find(includeCells)), reactivatedCellPairs);
+                    reactivatedCellPairs = reactivatedCellPairs(includeReactivatedCellPairs);
+                    includeControlCellPairs = cellfun(@(x) ismember(x(1), find(includeCells)), controlCellPairs);
+                    controlCellPairs = controlCellPairs(includeControlCellPairs);
                     
                     % Load behavioural info
                     armChoice = behav_data.reward_probs{session}(behav_data.actions{session});
                     armLegitimacy = cellfun(@(x, y) x(y), behav_data.arm_values{session}, mat2cell(behav_data.actions{session}, 1, ones(behav_data.n_trials(session), 1)));
                     armLegitimacy = cellfun(@(x) ~strcmp(x, 'Illegitimate'), armLegitimacy);
+                    rewardedTrials = behav_data.rewarded{session};
                     
                     % Load spiking data
-                    [rewardArrivalTimes, CPEntryTimes, ~] = obj.loadRewardCPTimes(filepath);
-                    includeStrCells = find(obj.selectRewardResponsiveCells(data.spiketimes(1:data.nNAcUnits), rewardArrivalTimes, CPEntryTimes));
-                    includeCells = [includeStrCells, ones(1, data.nCA1Units)];
-                    spiketimes = data.spiketimes(boolean(includeCells));
-                    binnedfr = data.binnedfr(boolean(includeCells), :);
+                    spiketimes = data.spiketimes;
+                    binnedfr = data.binnedfr;
                     
                     % Get activity of all members of cell pairs during TASK
                     spiketimes1Reactivated = spiketimes(cellfun(@(x) x(1), reactivatedCellPairs));
@@ -1314,17 +1385,23 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     binnedfr2Control = binnedfr(cellfun(@(x) x(2), controlCellPairs), :);
                                 
                     % Divide trials into mid- and high- probability arms
-                    mediumExpTrials = strcmp(armChoice, 'medium') & armLegitimacy;
-                    highExpTrials = strcmp(armChoice, 'high') & armLegitimacy;
-                    
-                    % Divide trials into mid- and high- probability arms
                     switch event
                         case 'centralPlatform'
                             armChoice = armChoice(2:end);
                             armLegitimacy = armLegitimacy(2:end);
+                            rewardedTrials = rewardedTrials(2:end);
                     end
-                    mediumExpTrials = strcmp(armChoice, 'medium')  & armLegitimacy;
-                    highExpTrials = strcmp(armChoice, 'high') & armLegitimacy;
+                    switch trialSubset
+                        case 'rewarded_only'
+                            mediumExpTrials = strcmp(armChoice, 'medium') & armLegitimacy & rewardedTrials;
+                            highExpTrials = strcmp(armChoice, 'high') & armLegitimacy & rewardedTrials;
+                        case 'unrewarded_only'
+                            mediumExpTrials = strcmp(armChoice, 'medium') & armLegitimacy & ~rewardedTrials;
+                            highExpTrials = strcmp(armChoice, 'high') & armLegitimacy & ~rewardedTrials;
+                        case 'all'
+                            mediumExpTrials = strcmp(armChoice, 'medium')  & armLegitimacy;
+                            highExpTrials = strcmp(armChoice, 'high') & armLegitimacy;
+                    end
 
                     % Get coactivity rates -5 to +5 seconds around arrival, divided into
                     % mid- and high-probability arms, for each rat
@@ -1382,7 +1459,140 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             end
             
             obj.taskCoactivity = taskCoactivity;
+            
+            switch cellPairs
+                case 'interarea'
+                    obj.taskCoactivity = taskCoactivity;
+                case 'vStr'
+                    obj.taskCoactivityVStr = taskCoactivity;
+            end
+
                         
+        end
+        
+        
+        function countRewardResponsivenessInCellPairs(obj, varargin)
+            
+            % Counts the number of CA1-vStr cell pairs in which the
+            % striatal partner has significantly reward-modulated firing,
+            % and performs a chi-square test to compare reactivated with
+            % control cell pairs. Prints the results (nothing is returned)            
+            % 
+            % Inputs
+            %   - ephysDataPath:     optional; specifies the path where .mat files of electrophysiological and related data are stored
+
+            % Process paths where data is stored, and progress tracking
+            p = inputParser;
+            addParameter(p, 'ephysDataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
+            parse(p, varargin{:});
+            ephysDataPath = p.Results.ephysDataPath;
+            
+            % Initialise counts to 0
+            n_reactivated_cell_pairs_rr = 0;
+            n_reactivated_cells_rr_before = 0;
+            n_reactivated_cells_rr_after = 0;
+            total_n_reactivated_cell_pairs = 0;
+
+            n_control_cell_pairs_rr = 0;
+            n_control_cells_rr_before = 0;
+            n_control_cells_rr_after = 0;
+            total_n_control_cell_pairs = 0;
+
+            for iRat = 1:length(obj.inclusionCriteria.rats)
+
+                ratName = obj.inclusionCriteria.rats{iRat};
+
+                for session = 1:length(obj.perCellContributions.reactivatedCellPairs.(ratName))
+
+                    if numel(obj.perCellContributions.reactivatedCellPairs.(ratName){session})==0
+                        continue
+                    end
+
+                    filepath = fullfile(ephysDataPath, sprintf('Rat_%s', ratName(1)), sprintf('Session%i', session));
+
+                    % Get the vStr cell identity for each reactivated and nonreactivated pair
+                    reactivated_vstr = obj.perCellContributions.reactivatedCellPairs.(ratName){session}(:, 1);
+                    control_vstr = obj.perCellContributions.controlCellPairs.(ratName){session}(:, 1);
+
+                    % Identify the reward-responsive cells
+                    data = obj.loadData(filepath);
+                    [rewardArrivalTimes, CPEntryTimes, ~] = obj.loadRewardCPTimes(filepath);
+                    rewardResponsive = obj.identifyRewardResponsiveCells(data.spiketimes(1:data.nNAcUnits), rewardArrivalTimes, CPEntryTimes);
+                    reward_responsive_vstr = find(rewardResponsive.rewardResponsive);
+                    reward_responsive_vstr_before = find(rewardResponsive.rewardResponsiveBeforeRewardArrival);
+                    reward_responsive_vstr_after = find(rewardResponsive.rewardResponsiveAfterRewardArrival);
+
+                    % Identify how many reactivated cell pairs include a reward-responsive vStr cell
+                    rr_cell_pairs_reactivated = arrayfun(@(x) ismember(x, reward_responsive_vstr), reactivated_vstr);
+                    rr_cell_pairs_before_reactivated = arrayfun(@(x) ismember(x, reward_responsive_vstr_before), reactivated_vstr);
+                    rr_cell_pairs_after_reactivated = arrayfun(@(x) ismember(x, reward_responsive_vstr_after), reactivated_vstr);
+
+                    % Identify how many non-reactivated cell pairs include a reward-responsive vStr cell
+                    rr_cell_pairs_control = arrayfun(@(x) ismember(x, reward_responsive_vstr), control_vstr);
+                    rr_cell_pairs_before_control = arrayfun(@(x) ismember(x, reward_responsive_vstr_before), control_vstr);
+                    rr_cell_pairs_after_control = arrayfun(@(x) ismember(x, reward_responsive_vstr_after), control_vstr);
+
+                    % Store (reactivated)
+                    n_reactivated_cell_pairs_rr = n_reactivated_cell_pairs_rr + sum(rr_cell_pairs_reactivated);
+                    n_reactivated_cells_rr_before = n_reactivated_cells_rr_before + sum(rr_cell_pairs_before_reactivated);
+                    n_reactivated_cells_rr_after = n_reactivated_cells_rr_after + sum(rr_cell_pairs_after_reactivated);
+                    total_n_reactivated_cell_pairs = total_n_reactivated_cell_pairs + length(rr_cell_pairs_reactivated);
+
+                    % Store (non-reactivated)
+                    n_control_cell_pairs_rr = n_control_cell_pairs_rr + sum(rr_cell_pairs_control);
+                    n_control_cells_rr_before = n_control_cells_rr_before + sum(rr_cell_pairs_before_control);
+                    n_control_cells_rr_after = n_control_cells_rr_after + sum(rr_cell_pairs_after_control);
+                    total_n_control_cell_pairs = total_n_control_cell_pairs + length(rr_cell_pairs_control);
+
+                end
+
+            end
+
+            % Chi-squared test
+            group = [ones(total_n_reactivated_cell_pairs,1); 2*ones(total_n_control_cell_pairs,1)];
+            outcome = [ones(n_reactivated_cell_pairs_rr,1); zeros(total_n_reactivated_cell_pairs-n_reactivated_cell_pairs_rr,1); ...
+                       ones(n_control_cell_pairs_rr,1); zeros(total_n_control_cell_pairs-n_control_cell_pairs_rr,1)];
+            [~, ~, p] = crosstab(group, outcome);
+
+            % Print results
+            fprintf('\nOverall, %i out of %i (%.2f%%) of reactivated cell pairs contain a reward-responsive vStr cell\n',...
+                n_reactivated_cell_pairs_rr,...
+                total_n_reactivated_cell_pairs,...
+                n_reactivated_cell_pairs_rr/total_n_reactivated_cell_pairs*100)
+
+            fprintf('%i out of %i (%.2f%%) of reactivated cell pairs contain a vStr cell that is responsive before arrival at reward location\n',...
+                n_reactivated_cells_rr_before,...
+                total_n_reactivated_cell_pairs,...
+                n_reactivated_cells_rr_before/total_n_reactivated_cell_pairs*100)
+
+            fprintf('%i out of %i (%.2f%%) of reactivated cell pairs contain a vStr cell that is responsive after arrival at reward location\n',...
+                n_reactivated_cells_rr_after,...
+                total_n_reactivated_cell_pairs,...
+                n_reactivated_cells_rr_after/total_n_reactivated_cell_pairs*100)
+
+            fprintf('\nOverall, %i out of %i (%.2f%%) of control cell pairs contain a reward-responsive vStr cell\n',...
+                n_control_cell_pairs_rr,...
+                total_n_control_cell_pairs,...
+                n_control_cell_pairs_rr/total_n_control_cell_pairs*100)
+
+            fprintf('%i out of %i (%.2f%%) of control cell pairs contain a vStr cell that is responsive before arrival at reward location\n',...
+                n_control_cells_rr_before,...
+                total_n_control_cell_pairs,...
+                n_control_cells_rr_before/total_n_control_cell_pairs*100)
+
+            fprintf('%i out of %i (%.2f%%) of control cell pairs contain a vStr cell that is responsive after arrival at reward location\n',...
+                n_control_cells_rr_after,...
+                total_n_control_cell_pairs,...
+                n_control_cells_rr_after/total_n_control_cell_pairs*100)
+
+            if p < 0.05
+                fprintf('\nA chi-squared test shows that the proportion of reactivated vs control cell pairs that contain a reward-responsive vStr cell is significantly different, p = %f\n',...
+                    p)
+            else
+                fprintf('\nA chi-squared test shows that the proportion of reactivated vs control cell pairs that contain a reward-responsive vStr cell is NOT significantly different, p = %f\n',...
+                    p)
+            end
+
         end
 
                 
@@ -1396,23 +1606,39 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             %   - event:            'rewardArrival' or 'centralPlatform', used for labelling the x-axis
             %   - perRat:           optional; logical which plots a separate figure for each rat if true, or pools cell pairs
             %                          from all rats together if false
+            %   - cellPairs:        optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
             
             % Process input
             p = inputParser;
             addParameter(p, 'perRat', false, @(x) islogical(x));
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
             parse(p, varargin{:});
             perRat = p.Results.perRat;
+            cellPairs = p.Results.cellPairs;
             
-            if ~isempty(obj.taskCoactivity)
-                activity = obj.taskCoactivity;
-                ts = obj.taskCoactivity.ts;
+            switch cellPairs
+                case 'interarea'
+                    coactivityField = obj.taskCoactivity;
+                case 'vStr'
+                    coactivityField = obj.taskCoactivityVStr;
+            end
+            
+            if ~isempty(coactivityField)
+                activity = coactivityField;
+                ts = coactivityField.ts;
             else
                 error('No activity has been calculated, so cannot be plotted. Please run getReactivatedCellPairActivity().')
             end
                         
             % Plot mean and SEM
             
-            fields = fieldnames(obj.perCellContributions.reactivatedCellPairs);
+            switch cellPairs
+                case 'interarea'
+                    fields = fieldnames(obj.perCellContributions.reactivatedCellPairs);
+                case 'vStr'
+                    fields = fieldnames(obj.perCellContributionsVStr.reactivatedCellPairs);
+            end
+
             rats = fields(ismember(fields, obj.inclusionCriteria.rats));
             figures = {};
             
@@ -1431,7 +1657,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     mediumReactivated = activity.perCellMediumRewardExpectation.reactivated.(ratName);
                     highControl = activity.perCellHighRewardExpectation.control.(ratName);
                     highReactivated = activity.perCellHighRewardExpectation.reactivated.(ratName);
-                    fig = obj.plotActivity(mediumControl, mediumReactivated, highControl, highReactivated, ts);
+                    fig = obj.plotActivity(mediumControl, mediumReactivated, highControl, highReactivated, ts, cellPairs);
+                    fig.Name = sprintf('Mean +- SEM coactivity of %s cell pairs for rat %s', cellPairs, ratName);
                     suptitle(ratName)
                     figures{iRat} = fig;
 
@@ -1444,7 +1671,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 mediumReactivated = cell2mat(struct2cell(activity.perCellMediumRewardExpectation.reactivated));
                 highControl = cell2mat(struct2cell(activity.perCellHighRewardExpectation.control));
                 highReactivated = cell2mat(struct2cell(activity.perCellHighRewardExpectation.reactivated));
-                fig = obj.plotActivity(mediumControl, mediumReactivated, highControl, highReactivated, ts, event);
+                fig = obj.plotActivity(mediumControl, mediumReactivated, highControl, highReactivated, ts, event, cellPairs);
+                fig.Name = sprintf('Mean +- SEM coactivity of %s cell pairs for all rats pooled', cellPairs);
                 fig.Units = 'centimeters';
                 fig.Position = [14.8, 16.6, 17.9, 8.7];
                 figures{1} = fig;
@@ -1454,7 +1682,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
         end
         
         % Plot 
-        function fig = plotActivity(~, mediumControl, mediumReactivated, highControl, highReactivated, ts, event)
+        function fig = plotActivity(~, mediumControl, mediumReactivated, highControl, highReactivated, ts, event, cellPairs)
             
             % Plots line graphs of the mean and standard error of event-triggered coactivity of 
             % two types of cell pairs (reactivated and control) on two types of trial
@@ -1468,6 +1696,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             %   - ts:                          vector of timestamps used for labelling the x-axis; must be the same length as the medium and high control and
             %                                   reactivated vectors
             %   - event:                     'centralPlatform' or 'rewardArrival'; used for labelling the x-axis
+            %   - cellPairs:                 'interarea' or 'vStr', to select the corresponding colour palette
             % 
             % Outputs
             %   - fig:                         handle for the resulting figure
@@ -1475,7 +1704,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             colour_scheme;
             axes_properties;
 
-            fig = figure;
+            fig = figure('Name', sprintf('Mean +- SEM activity of %s cell pairs', cellPairs));
             subplot(1, 2, 1); hold on
 
             % Plot control cell-pair activity on medium-reward-expectation trials
@@ -1493,8 +1722,14 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             plot(ts, firing_mean, 'Color', LineColor)
 
             % Plot reactivated cell-pair activity on medium-reward-expectation trials
-            FaceColor = colourscheme.medium_exp_reward_primary;
-            LineColor = colourscheme.medium_exp_reward_secondary;
+            switch cellPairs
+                case 'interarea'
+                    FaceColor = colourscheme.medium_exp_reward_primary;
+                    LineColor = colourscheme.medium_exp_reward_secondary;
+                case 'vStr'
+                    FaceColor = colourscheme.medium_exp_reward_primary2;
+                    LineColor = colourscheme.medium_exp_reward_secondary2;
+            end
             firing = mediumReactivated;
             if size(firing, 2)==1
                 firing = firing';
@@ -1526,8 +1761,14 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             plot(ts, firing_mean, 'Color', LineColor)
 
             % Plot reactivated cell-pair activity on high-reward-expectation trials
-            FaceColor = colourscheme.high_exp_reward_primary;
-            LineColor = colourscheme.high_exp_reward_secondary;
+            switch cellPairs
+                case 'interarea'
+                    FaceColor = colourscheme.high_exp_reward_primary;
+                    LineColor = colourscheme.high_exp_reward_secondary;
+                case 'vStr'
+                    FaceColor = colourscheme.high_exp_reward_primary2;
+                    LineColor = colourscheme.high_exp_reward_secondary2;
+            end
             firing = highReactivated;
             if size(firing, 2)==1
                 firing = firing';
@@ -1557,31 +1798,50 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 end
                 ax = gca(); pos = ax.Position; pos(2) = pos(2) + 0.15; pos(4) = pos(4) - 0.2; ax.Position = pos;
             end
-
+            
         end
 
                 
             
         % Get event-triggered activity
-        function obj = getEventTriggeredActivity(obj)
+        function obj = getEventTriggeredActivity(obj, varargin)
 
-            % Calculates the mean coactivity in the 2 seconds prior to event, averaged by rat, reward expectation, and
+            % Calculates the mean coactivity in the 2 seconds prior to event or 5 seconds after event, averaged by rat, reward expectation, and
             % reactivated/control cell type
+            % 
+            % Inputs
+            %   - cellPairs:        optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
             
-            if ~isempty(obj.taskCoactivity)
-                ts = obj.taskCoactivity.ts;
+            % Process input
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
+            
+            switch cellPairs
+                case 'interarea'
+                    coactivityField = obj.taskCoactivity;
+                case 'vStr'
+                    coactivityField = obj.taskCoactivityVStr;
+            end
+            
+            if ~isempty(coactivityField)
+                ts = coactivityField.ts;
             else
                 error('No activity has been calculated, so cannot be averaged. Please run getReactivatedCellPairActivity() first.')
             end
+
             meanEventTriggeredActivity = struct('high', struct('reactivated', struct(), 'control', struct()),...
                 'medium', struct('reactivated', struct(), 'control', struct()));
-
+            
+            [t_before, t_after] = obj.eventTriggeredTimings(cellPairs);
+            
             for ratName = obj.inclusionCriteria.rats
                 for trialType = {'High', 'Medium'}
                     f = cell2mat(['perCell' trialType 'RewardExpectation']);
                     for cellType = {'reactivated', 'control'}
                         if numel(obj.taskCoactivity.(f).(cellType{1}).(ratName{1})) > 0
-                            firing = obj.taskCoactivity.(f).(cellType{1}).(ratName{1})(:, (ts > -2) & (ts < 0));
+                            firing = obj.taskCoactivity.(f).(cellType{1}).(ratName{1})(:, (ts > -t_before) & (ts < t_after));
                             meanEventTriggeredActivity.(lower(trialType{1})).(cellType{1}).(ratName{1}) = mean(firing, 2);
                         else
                             meanEventTriggeredActivity.(lower(trialType{1})).(cellType{1}).(ratName{1}) = [];
@@ -1590,17 +1850,25 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 end
             end
 
-            obj.meanEventTriggeredActivity = meanEventTriggeredActivity;
+            switch cellPairs
+                case 'interarea'
+                    obj.meanEventTriggeredActivity = meanEventTriggeredActivity;
+                case 'vStr'
+                    obj.meanEventTriggeredActivityVStr = meanEventTriggeredActivity;
+            end
 
         end
         
         
-        function [table, p_interaction, p_medium, p_high] = mixedEffectsNestedAnova(obj)
+        function [table, p_interaction, p_medium, p_high] = mixedEffectsNestedAnova(obj, varargin)
             
             % Performs a mixed-effects nested ANOVA with cell-pair type (reactivated or control) and trial type (high- or
             % medium-reward-expectation) as fixed effects, cell-pair identity nested within rat identity as random effects, and
             % mean event-triggered coactivity as the dependent variable.
             % Also performs post-hoc tests of main effects.
+            % 
+            % Inputs
+            %   - cellPairs:        optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
             % 
             % Outputs
             %   - table:               full ANOVA table with all results
@@ -1608,11 +1876,23 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             %   - p_medium:       p-value associated with post-hoc t-test on medium-reward-expectation trials
             %   - p_high:       p-value associated with post-hoc t-test on high-reward-expectation trials
             
+            % Process input
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
+                       
             % Concatenate data from all conditions
-            reactivatedHigh = cell2mat(struct2cell(obj.meanEventTriggeredActivity.high.reactivated))';
-            reactivatedMid = cell2mat(struct2cell(obj.meanEventTriggeredActivity.medium.reactivated))';
-            controlHigh = cell2mat(struct2cell(obj.meanEventTriggeredActivity.high.control))';
-            controlMid = cell2mat(struct2cell(obj.meanEventTriggeredActivity.medium.control))';
+            switch cellPairs
+                case 'interarea'
+                    activityField = obj.meanEventTriggeredActivity;
+                case 'vStr'
+                    activityField = obj.meanEventTriggeredActivityVStr;
+            end
+            reactivatedHigh = cell2mat(struct2cell(activityField.high.reactivated))';
+            reactivatedMid = cell2mat(struct2cell(activityField.medium.reactivated))';
+            controlHigh = cell2mat(struct2cell(activityField.high.control))';
+            controlMid = cell2mat(struct2cell(activityField.medium.control))';
             Y =  [reactivatedHigh reactivatedMid controlHigh controlMid];
 
             % Specify reactivated or not
@@ -1642,7 +1922,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 for trialType = {'high', 'medium'} 
                     for iRat = 1:length(obj.inclusionCriteria.rats)
                         ratName = obj.inclusionCriteria.rats{iRat};
-                        nCells = length(obj.meanEventTriggeredActivity.(trialType{1}).(cellType{1}).(ratName));
+                        nCells = length(activityField.(trialType{1}).(cellType{1}).(ratName));
                         rat = [rat ones(1, nCells) * iRat];
                     end
                 end
@@ -1699,7 +1979,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 pairMinFR = min([mediumCoactivity(:); highCoactivity(:)]);
 
                 % Plot coactivity on medium-probability arm
-                figure('Position', [530, 600, 1100, 260]);
+                figure('Position', [530, 600, 1100, 260], 'Name', sprintf('Example #%i of cell-pair coactivity (rat %s, session %i, cell pair %i)', iPair, ratName(1), session, order(iPair)));
                 binsize = 0.05;
                 subplot(1, 2, 1);
                 [nTrials, ~, nBins] = size(mediumCoactivity);
@@ -1833,7 +2113,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             reactivatedPre = cell2mat(struct2cell(rippleCoactivity.perCellPairPre.reactivated));
             reactivatedPost = cell2mat(struct2cell(rippleCoactivity.perCellPairPost.reactivated));
             ts = -475:50:475;
-            fig = obj.plotActivity(reactivatedPre, reactivatedPost, reactivatedPre, reactivatedPost, ts);
+            fig = obj.plotActivity(reactivatedPre, reactivatedPost, reactivatedPre, reactivatedPost, ts, 'interarea');
             
         end
         
@@ -1998,7 +2278,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             colour_scheme;
             axes_properties;
             f = figure('Units', 'centimeters',...
-                'Position', [9.7, 7.9, 9, 17.9]);
+                'Position', [9.7, 7.9, 9, 17.9],...
+                'Name', 'Running speed and population activity');
 
             switch scope
                 case 'rewardExpectancy'
@@ -2097,23 +2378,42 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             
         end
         
-        function peakCoactivity = getPeakCoactivity(obj, arm, trialType)
+        function peakCoactivity = getPeakCoactivity(obj, arm, trialType, cellPairs)
             
             % Get coactivity for the 2 seconds before an event
             % 
             % Inputs
             %   - arm:                   'high' or 'medium'; must be a field of the perCellRewardExpectation property
             %   - trialType:            'reactivated' 'control' or NaN, if not Nan, must be a subfield of the arm field
+            %   - cellPairs:     optional; 'interarea' (default) or 'vStr' to select the corresponding timer period around event
             % 
             % Outputs
             %   - peakCoactivity:   peak coactivity in the 2 seconds prior to event
 
             obj.rewardFiring = obj.taskCoactivity;
-            peakCoactivity = getPeakFiringRates(obj, arm, trialType);
+            peakCoactivity = getPeakFiringRates(obj, arm, trialType, 'cellPairs', cellPairs);
             
         end
 
-        function obj = plotPeakPreRewardCoactivity(obj, p_medium, p_high, p_interaction)
+        function obj = plotPeakPeriRewardCoactivity(obj, p_medium, p_high, p_interaction, varargin)
+            
+            % Plots a bar graph of peak coactivity around reward on medium-
+            % and high-reward-expectaion arms, with significance markers.
+            % 
+            % Inputs
+            %  - p_medium:      p-value for hypothesis test of the difference between cell-pair coactivity on the
+            %                         medium-expectation arm
+            %  - p_high:           p-value for hypothesis test of the difference between cell-pair coactivity on the
+            %                         high-expectation arm
+            %  - p_interaction:  p-value for hypothesis test of the interaction between cell-pair coactivity on the
+            %                         high- vs medium-expectation arm and reactivated vs non-reactivated cell pairs
+            %   - cellPairs:        optional; 'interarea' (default) or 'vStr' to select the corresponding colour palette
+            
+            % Process which cell contributions to use
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
             
             % Check that there is data to plot
             assert(isstruct(obj.taskCoactivity) && ~isempty(obj.taskCoactivity), 'ExplainedVarianceReactivation:dataNotAssigned', 'No data to plot. Please run the getReactivatedCellPairActivity() method to generate data.')
@@ -2124,36 +2424,39 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             axes_properties
             
             fig = figure('Units', 'centimeters',...
-                'Position', [18.0, 17.2, 12.2, 8.7]); hold on
+                'Position', [18.0, 17.2, 12.2, 8.7],...
+                'Name', sprintf('Peak %s cell-pair coactivity by trial type', cellPairs)); hold on
             
-             % Calculate peak coactivity in the 2 seconds prior to event on medium-expectation trials
+             % Calculate peak coactivity in the period around event on medium-expectation trials
              % for reactivated and control cell pairs
-            mediumReactivatedRewardExpectationPeaks = obj.getPeakCoactivity('medium', 'reactivated');
-            mediumControlRewardExpectationPeaks = obj.getPeakCoactivity('medium', 'control');
+            mediumReactivatedRewardExpectationPeaks = obj.getPeakCoactivity('medium', 'reactivated', cellPairs);
+            mediumControlRewardExpectationPeaks = obj.getPeakCoactivity('medium', 'control', cellPairs);
 
             % Calculate peak coactivity in the 2 seconds prior to event on high-expectation trials
              % for reactivated and control cell pairs
-            highReactivatedRewardExpectationPeaks = obj.getPeakCoactivity('high', 'reactivated');
-            highControlRewardExpectationPeaks = obj.getPeakCoactivity('high', 'control');
+            highReactivatedRewardExpectationPeaks = obj.getPeakCoactivity('high', 'reactivated', cellPairs);
+            highControlRewardExpectationPeaks = obj.getPeakCoactivity('high', 'control', cellPairs);
                 
             % Plot bars
-            fig = obj.plotBar(mediumControlRewardExpectationPeaks, 'insignificant', 1, fig);
-            fig = obj.plotBar(mediumReactivatedRewardExpectationPeaks, 'medium_exp_reward', 2, fig);
-            fig = obj.plotBar(highControlRewardExpectationPeaks, 'insignificant', 4, fig);
-            fig = obj.plotBar(highReactivatedRewardExpectationPeaks, 'high_exp_reward', 5, fig);
+            fig = obj.plotBar(mediumControlRewardExpectationPeaks, 'insignificant', 1, fig, 'cellPairs', cellPairs);
+            fig = obj.plotBar(mediumReactivatedRewardExpectationPeaks, 'medium_exp_reward', 2, fig, 'cellPairs', cellPairs);
+            fig = obj.plotBar(highControlRewardExpectationPeaks, 'insignificant', 4, fig, 'cellPairs', cellPairs);
+            fig = obj.plotBar(highReactivatedRewardExpectationPeaks, 'high_exp_reward', 5, fig, 'cellPairs', cellPairs);
 
             % Significance markers
             y = ylim;
              y(2) = y(2)*1.2; ylim(y)
-            p_values = [p_medium, p_high, p_interaction];
+            pValues = [p_medium, p_high, p_interaction];
             xData = {[1, 2], [4, 5], [1.5, 4.5]};
-            yData = {[0.85 0.9, 0.91, 0.935], [0.85, 0.9, 0.91, 0.935], [0.96, 1, 1.01, 1.035]};
+            yData = {[0.85 0.9, 0.91, 0.935], [0.85, 0.9, 0.91, 0.935], [0.96, 1, 1.05, 1.035]};
+            significanceMarkers = {'*', '*', '#'};
+            significanceMarkerFontSixe = {24, 24, 13};
             for i = 1:3
                 line([xData{i}(1) xData{i}(1)], [yData{i}(1:2) * y(2)], 'Color', 'k', 'LineWidth', 1.5)
                 line([xData{i}(2) xData{i}(2)], [yData{i}(1:2) * y(2)], 'Color', 'k', 'LineWidth', 1.5)
                 line(xData{i}, [[yData{i}(2) yData{i}(2)] * y(2)], 'Color', 'k', 'LineWidth', 1.5)
-                if p_values(i) < 0.05
-                    text(mean(xData{i}), yData{i}(3) * y(2), '*', 'FontSize', 24, 'HorizontalAlignment', 'center')
+                if pValues(i) < 0.05
+                    text(mean(xData{i}), yData{i}(3) * y(2), significanceMarkers{i}, 'FontSize', significanceMarkerFontSixe{i}, 'HorizontalAlignment', 'center')
                 else
                     text(mean(xData{i}), yData{i}(3) * y(2), 'n.s.', 'FontSize', 13, 'HorizontalAlignment', 'center')
                 end
@@ -2177,6 +2480,13 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             % high-reward-expectation trials, and the peri-spike histogram
             % of ventral striatal firing rates relative to CA1 spikes in
             % PRE, TASK and POST.
+            % 
+            % Inputs
+            %   - ratName:                  optional
+            %   - session:                    optional
+            %   - cellPairIndex:             optional
+            %   - ephysDataPath:         optional
+            %   - behaviouralDataPath:  optional
             
             % Process inputs
             p = inputParser;
@@ -2216,9 +2526,10 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             axes_properties;
             colour_scheme;
             f_high = figure('Units', 'centimeters',...
-                'Position', [18 14.7 14.8 11.1]);
+                'Position', [18 14.7 14.8 11.1],...
+                'Name', sprintf('Example of significant reactivated cell pair on high-reward-expectation trials, rat %s, session %i, index %i', ratName(1), session, cellPairIndex));
             subplot(4, 1, 1:3); hold on; set(gca, 'YDir', 'reverse'); title('High reward expectation trials')
-            tickHeight = 0.5; coactivityScalingFactor = 5;
+            tickHeight = 0.5;
             vStr_spiketimes = data.spiketimes{pair(1)};
             CA1_spiketimes = data.spiketimes{pair(2)};
             for iTrial = 1:length(highExpArrivalTimes)
@@ -2275,7 +2586,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
 
             % Plot medium
             f_medium = figure('Units', 'centimeters',...
-                'Position', [18 14.7 14.8 11.1]);
+                'Position', [18 14.7 14.8 11.1],...
+                'Name', sprintf('Example of significant reactivated cell pair on medium-reward-expectation trials, rat %s, session %i, index %i', ratName(1), session, cellPairIndex));
             subplot(4, 1, 1:3); hold on; set(gca, 'YDir', 'reverse'); title('Medium reward expectation trials')
             tickHeight = 0.5; coactivityScalingFactor = 5;
             vStr_spiketimes = data.spiketimes{pair(1)};
@@ -2362,7 +2674,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             vStrFiringRateTASK = cell2mat(cellfun(@(spikes) squeeze(obj.convolveAndBin(-0.1, 0.2, 0.01, {spikes})), vStrSpikes, 'UniformOutput', false)');
 
             % Plot
-            f = figure;
+            f = figure('Name', sprintf('Example of significant reactivated cell pair: spike-triggered vStr firing rates, rat %s, session %i, index %i', ratName(1), session, cellPairIndex));
             meanPRE = mean(vStrFiringRatePRE, 2);
             semPRE = std(vStrFiringRatePRE, [], 2) / sqrt(size(vStrFiringRatePRE, 2));
             meanTASK = mean(vStrFiringRateTASK, 2);

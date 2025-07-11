@@ -975,7 +975,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
         end
         
         % Test that plotting of peak fring rates produces a figure
-        function testPlotPeakPreRewardFiring_basicFunctionality(testCase)
+        function testplotPeakPeriRewardFiring_basicFunctionality(testCase)
             
             % Mock inclusion criteria
             testCase.RewardRelatedFiringObj.inclusionCriteria.rats = {'A_rat'};
@@ -987,8 +987,8 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
                 'perCellHighRewardExpectation', struct('A_rat', random('Normal', 1, 1, 10, 200)),...
                 'ts', linspace(-10, 5, 200));
 
-            % Call plotPeakPreRewardFiring
-            output = testCase.RewardRelatedFiringObj.plotPeakPreRewardFiring();
+            % Call plotPeakPeriRewardFiring
+            output = testCase.RewardRelatedFiringObj.plotPeakPeriRewardFiring('interarea');
 
             % Verify that a figure is created
             testCase.verifyNotEmpty(output.figures, 'No figure handle stored in stored in obj.figures.');
@@ -999,7 +999,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
         
         % Test that plotting of peak fring rates produces a correct figure
         % with data from one rat with no significant differences
-        function testPlotPeakPreRewardFiring_dataSingleRatNoSignificance(testCase)
+        function testplotPeakPeriRewardFiring_dataSingleRatNoSignificance(testCase)
             
             % Mock inclusion criteria
             testCase.RewardRelatedFiringObj.inclusionCriteria.rats = {'A_rat'};
@@ -1014,8 +1014,8 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
                 'perCellHighRewardExpectation', struct('A_rat', firingRate*2),...
                 'ts', linspace(-5, 5, 200));
             
-             % Call plotPeakPreRewardFiring
-            output = testCase.RewardRelatedFiringObj.plotPeakPreRewardFiring();
+             % Call plotPeakPeriRewardFiring
+            output = testCase.RewardRelatedFiringObj.plotPeakPeriRewardFiring('interarea');
             
             % Verify that one figure is created
             nFigures = length(output.figures);
@@ -1068,7 +1068,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
         
         % Test that plotting of peak fring rates produces a correct figure
         % with data from three rats
-        function testPlotPeakPreRewardFiring_multipleRats(testCase)
+        function testplotPeakPeriRewardFiring_multipleRats(testCase)
             
             % Mock inclusion criteria
             testCase.RewardRelatedFiringObj.inclusionCriteria.rats = {'A_rat', 'B_rat', 'C_rat'};
@@ -1085,8 +1085,8 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
                 'C_rat', ones(10, 200)*3),...
                 'ts', linspace(-10, 0, 200));
 
-            % Call plotPeakPreRewardFiring
-            output = testCase.RewardRelatedFiringObj.plotPeakPreRewardFiring();
+            % Call plotPeakPeriRewardFiring
+            output = testCase.RewardRelatedFiringObj.plotPeakPeriRewardFiring('interarea');
 
             % Verify that one figure is created
             nFigures = length(output.figures);
@@ -1133,7 +1133,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
         end
         
          % Test that plotting of peak fring rates produces correct significance markers
-        function testPlotPeakPreRewardFiring_significance(testCase)
+        function testplotPeakPeriRewardFiring_significance(testCase)
             
             % Mock inclusion criteria
             testCase.RewardRelatedFiringObj.inclusionCriteria.rats = {'A_rat'};
@@ -1146,7 +1146,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
                 'ts', linspace(-15, 0, 200));
 
             % Call plotRewardRelatedFiring
-            output = testCase.RewardRelatedFiringObj.plotPeakPreRewardFiring();
+            output = testCase.RewardRelatedFiringObj.plotPeakPeriRewardFiring('interarea');
             
             % Verify that the figure contains seven Lines and two Patches
             fig = output.figures{1};
@@ -1167,7 +1167,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
         
         % Test that plotting of peak fring rates produces an error
         % with data from no rats
-        function testPlotPeakPreRewardFiring_noRats(testCase)
+        function testplotPeakPeriRewardFiring_noRats(testCase)
             
             % Mock inclusion criteria
             testCase.RewardRelatedFiringObj.inclusionCriteria.rats = {};
@@ -1180,7 +1180,7 @@ classdef RewardRelatedFiringTest < matlab.unittest.TestCase
             
             % Call plotRewardRelatedFiring
             expectedErrorId = 'RewardRelatedFiring:dataNotAssigned';
-            testCase.verifyError(@() testCase.RewardRelatedFiringObj.plotPeakPreRewardFiring(), expectedErrorId);
+            testCase.verifyError(@() testCase.RewardRelatedFiringObj.plotPeakPeriRewardFiring('interarea'), expectedErrorId);
                         
         end
 

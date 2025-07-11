@@ -258,6 +258,25 @@ classdef RewardRelatedFiring < EphysAnalysis
             end
         end
         
+        
+        function sessions = getAllAvailableSessions(obj)
+            
+            % Returns indices for all sessions for which data is available
+                
+            % All sessions for which data is available
+            sessions.Quirinius = 1:17;
+            sessions.Severus = [5:7 9:13 15:17];
+            sessions.Trevor = [1:2 4:10 13:20];
+
+            % Check that there are no rats unaccounted for
+            for ratName = obj.inclusionCriteria.rats
+                if ~ismember(ratName{1}, fieldnames(sessions))
+                    warning(sprintf('No learning sessions known for rat "%s"', ratName{1}))
+                end
+            end
+                
+            end
+        
 
         % Select sessions for analysis
         function obj = selectSessions(obj, varargin)
@@ -268,22 +287,6 @@ classdef RewardRelatedFiring < EphysAnalysis
             % 
             % Inputs
             %   - dataPath:     optionally, 'dataPath' along with the directory where behavioural data is stored (otherwise uses default path)
-            
-            function sessions = getAllAvailableSessions(obj)
-                
-                % All sessions for which data is available
-                sessions.Quirinius = 1:17;
-                sessions.Severus = [5:7 9:13 15:17];
-                sessions.Trevor = [1:2 4:10 13:20];
-                
-                % Check that there are no rats unaccounted for
-                for ratName = obj.inclusionCriteria.rats
-                    if ~ismember(ratName{1}, fieldnames(sessions))
-                        warning(sprintf('No learning sessions known for rat "%s"', ratName{1}))
-                    end
-                end
-                
-            end
             
             function sessions = skipEarliestSessions(sessions)
                 % Excluding first 2-5 sessions before consistent behaviour was noted as established by experimenter
@@ -337,7 +340,7 @@ classdef RewardRelatedFiring < EphysAnalysis
             dataPath = p.Results.dataPath;
                             
             % Sessions to evaluate: all available sessions, then exclude as needed
-            allSessions = getAllAvailableSessions(obj);
+            allSessions = obj.getAllAvailableSessions();
             initialLearningSessions = allSessions;
             sessionsForSpecificAnalysis = allSessions;
             if obj.inclusionCriteria.sessions.initialLearningOnly
@@ -509,7 +512,7 @@ classdef RewardRelatedFiring < EphysAnalysis
         end
         
         % Plot bar graph
-        function [h] = plotBar(~, data, colour_name, x, h)
+        function [h] = plotBar(~, data, colour_name, x, h, varargin)
             
             % Plots a single bar with a horizontal line indicating the median,
             % a box for the interquartile range, and whiskers extending from the quartiles to the full range
@@ -519,9 +522,16 @@ classdef RewardRelatedFiring < EphysAnalysis
             %   - colour_name: corresponding to a primary and secondary colour specified in the colourscheme
             %   - x:                 float; where on the x-axis to centre the bar (allows calling the function multiple times to plot multiple bars)
             %   - h:                 figure handle
+            %   - cellPairs:       optional; 'interarea' (deafult) or 'vStr' to select corresponding colour palette
             % 
             % Outputs
             %   - h:                 figure handle with the bar added
+            
+            % Process which cell contributions to use
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
 
             axes_properties;
             colour_scheme;
@@ -531,8 +541,14 @@ classdef RewardRelatedFiring < EphysAnalysis
             quartiles = quantile(data, [0.25 0.5 0.75]);
 
             % Get primary and secondary colours from colours scheme
-            evalc(['colour_primary = colourscheme.'  colour_name '_primary']);
-            evalc(['colour_secondary = colourscheme.'  colour_name '_secondary']);
+            switch cellPairs
+                case 'interarea'
+                    evalc(['colour_primary = colourscheme.'  colour_name '_primary']);
+                    evalc(['colour_secondary = colourscheme.'  colour_name '_secondary']);
+                case 'vStr'
+                    evalc(['colour_primary = colourscheme.'  colour_name '_primary2']);
+                    evalc(['colour_secondary = colourscheme.'  colour_name '_secondary2']);
+            end
 
             % Plot whiskers showing full range
             line([0 0]+x, [min(data) max(data)], 'Color', 'k', 'LineWidth', 2)
@@ -577,17 +593,47 @@ classdef RewardRelatedFiring < EphysAnalysis
             end
 
         end
+        
+        
+        function [t_before, t_after] = eventTriggeredTimings(~, cellPairs)
+            
+            % Returns analysis configuration parameters: analyse the period
+            % 0-2 seconds before event for inter-area reactivation
+            % analysis, or 0-5 seconds after event for ventral-striatal
+            % reactivation analysis
+            % 
+            % Inputs
+            %   - cellPairs:     optional; 'interarea' (default) or 'vStr' to select the corresponding timer period around event
+            
+            switch cellPairs
+                case 'interarea'
+                    t_before = 2;
+                    t_after = 0;
+                case 'vStr'
+                    t_before = 0;
+                    t_after = 5;
+            end
+            
+        end
 
-        function peakFiring = getPeakFiringRates(obj, arm, trialType)
+
+        function peakFiring = getPeakFiringRates(obj, arm, trialType, varargin)
             
             % Get firing rates for the 2 seconds before arrival at reward location
             % 
             % Inputs
             %   - arm:           'high' or 'medium'; must be a field of the perCellRewardExpectation property
             %   - trialType:    'reactivated' 'control' or NaN, if not Nan, must be a subfield of the arm field
+            %   - cellPairs:     optional; 'interarea' (default) or 'vStr' to select the corresponding timer period around event
             % 
             % Outputs
             %   - peakFiring:   peak firing rate in the 2 seconds prior to arrival at the reward location
+            
+            % Process input
+            p = inputParser;
+            addParameter(p, 'cellPairs', 'interarea', @(x) ischar(x) && (strcmp(x, 'interarea') || strcmp(x, 'vStr')));
+            parse(p, varargin{:});
+            cellPairs = p.Results.cellPairs;
             
             % Check that there is data to plot
             arm(1) = upper(arm(1));
@@ -598,6 +644,8 @@ classdef RewardRelatedFiring < EphysAnalysis
                 assert(isfield(obj.rewardFiring.(requiredField), trialType) && ~isempty(obj.rewardFiring.(requiredField).(trialType)), 'RewardRelatedFiring:dataNotAssigned', sprintf('Poperty "rewardFiring.%s" is missing data for the "%s" field. Please run the getRewardRelatedFiring() method to generate data.', requiredField, trialType))
             end
             assert(isfield(obj.rewardFiring, 'ts') && ~isempty(obj.rewardFiring.ts), 'RewardRelatedFiring:dataNotAssigned', 'Poperty "rewardFiring" is missing timestamp data for the "ts" field. Please run the getRewardRelatedFiring() method to generate data.')
+            
+            [t_before, t_after] = obj.eventTriggeredTimings(cellPairs);
 
             ts = obj.rewardFiring.ts;
             if isnan(trialType)
@@ -607,7 +655,7 @@ classdef RewardRelatedFiring < EphysAnalysis
             end
             firing = cell2mat(struct2cell(firing));
             assert(size(firing, 2) == numel(ts), 'RewardRelatedFiring:invalidData', 'Reward firing data does not match timestamps.')
-            preArrivalFiring = firing(:, (ts > -2) & (ts < 0));
+            preArrivalFiring = firing(:, (ts > -t_before) & (ts < t_after));
             
             % Calculate peak
             peakFiring = max(preArrivalFiring, [], 2);
@@ -616,7 +664,7 @@ classdef RewardRelatedFiring < EphysAnalysis
 
         
         % Plot peak pre-reward firing rate
-        function obj = plotPeakPreRewardFiring(obj)
+        function obj = plotPeakPeriRewardFiring(obj, cellPairs)
             
             % Plots a box-and-whisker plot of peak per-trial firing rates in the 2 seconds before arrival at reward locations, 
             % showing median and quartiles, for high- and medium-probability arms
@@ -635,11 +683,11 @@ classdef RewardRelatedFiring < EphysAnalysis
             
             fig = figure('Position', [680 558 230 420]); hold on
                             
-            % Calculate peak firing rate in the 2 seconds prior to arrival at medium-expectation reward location
-            mediumRewardExpectationPeaks = obj.getPeakFiringRates('medium', NaN);
+            % Calculate peak firing rate in the time around arrival at medium-expectation reward location
+            mediumRewardExpectationPeaks = obj.getPeakFiringRates('medium', NaN, 'cellPairs', cellPairs);
 
-            % Calculate peak firing rate in the 2 seconds prior to arrival at high-expectation reward location
-            highRewardExpectationPeaks = obj.getPeakFiringRates('high', NaN);
+            % Calculate peak firing rate in the time around arrival at high-expectation reward location
+            highRewardExpectationPeaks = obj.getPeakFiringRates('high', NaN, 'cellPairs', cellPairs);
                 
             % Plot bars
             fig = obj.plotBar(mediumRewardExpectationPeaks, 'medium_exp_reward', 1, fig);
