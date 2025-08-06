@@ -258,25 +258,6 @@ classdef RewardRelatedFiring < EphysAnalysis
             end
         end
         
-        
-        function sessions = getAllAvailableSessions(obj)
-            
-            % Returns indices for all sessions for which data is available
-                
-            % All sessions for which data is available
-            sessions.Quirinius = 1:17;
-            sessions.Severus = [5:7 9:13 15:17];
-            sessions.Trevor = [1:2 4:10 13:20];
-
-            % Check that there are no rats unaccounted for
-            for ratName = obj.inclusionCriteria.rats
-                if ~ismember(ratName{1}, fieldnames(sessions))
-                    warning(sprintf('No learning sessions known for rat "%s"', ratName{1}))
-                end
-            end
-                
-            end
-        
 
         % Select sessions for analysis
         function obj = selectSessions(obj, varargin)
@@ -562,7 +543,7 @@ classdef RewardRelatedFiring < EphysAnalysis
         end
         
         % Plot indication of significance if significant
-        function [h, p] = plotTTestSignificance(~, group1, group2, xData, h)
+        function [h, p] = plotTTestSignificance(~, group1, group2, xData, h, varargin)
             
             % Performs a paired-sample t-test and plots lines and a significant marker: * if significant at alpha=0.05, and n.s. otherwise
             % 
@@ -571,13 +552,23 @@ classdef RewardRelatedFiring < EphysAnalysis
             %   - group2:          second vector of numeric data on which to perform the t-test
             %   - xData:           vector of length 2, corresponding to where the two groups might be plotted; this is used to position the significance marker
             %   - h:                 figure handle
+            %   - tail:               optional; 'left' for a left-sided one-tailed test, 'right' for a right-sided one-tailed test,
+            %                         otherwise two-sided (default)
             % 
             % Outputs
             %   - h:                 figure handle with the bar added
             %   - p:                 p-value of the paired t-test
+            
+            % Process which cell contributions to use
+            p = inputParser;
+            addParameter(p, 'tail', 'both', @(x) ischar(x) && (strcmp(x, 'left') || strcmp(x, 'right') || strcmp(x, 'both')));
+            parse(p, varargin{:});
+            tail = p.Results.tail;
 
             % Perform t-test
-            [~, p] = ttest(group1, group2);
+            [~, p, ~, stats] = ttest(group1, group2, 'Tail', tail);
+            t = stats.tstat;
+            df = stats.df;
 
             % Plot lines to show comparison
             y = ylim;

@@ -1168,9 +1168,9 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             
             % T-tests
             ylim([0 1.1])
-            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.CA1.EV)'), cell2mat(struct2cell(obj.CA1.REV)'), [1 2], h);
-            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.vStr.EV)'), cell2mat(struct2cell(obj.vStr.REV)'), [3 4], h);
-            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.CA1_vStr.EV)'), cell2mat(struct2cell(obj.CA1_vStr.REV)'), [5 6], h);
+            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.CA1.EV)'), cell2mat(struct2cell(obj.CA1.REV)'), [1 2], h, 'tail', 'right');
+            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.vStr.EV)'), cell2mat(struct2cell(obj.vStr.REV)'), [3 4], h, 'tail', 'right');
+            [h, ~] = obj.plotTTestSignificance(cell2mat(struct2cell(obj.CA1_vStr.EV)'), cell2mat(struct2cell(obj.CA1_vStr.REV)'), [5 6], h, 'tail', 'right');
             
             % Format axes
             xlim([0 7])
@@ -1367,7 +1367,12 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                     armChoice = behav_data.reward_probs{session}(behav_data.actions{session});
                     armLegitimacy = cellfun(@(x, y) x(y), behav_data.arm_values{session}, mat2cell(behav_data.actions{session}, 1, ones(behav_data.n_trials(session), 1)));
                     armLegitimacy = cellfun(@(x) ~strcmp(x, 'Illegitimate'), armLegitimacy);
-                    rewardedTrials = behav_data.rewarded{session};
+                    try
+                        rewardedTrials = behav_data.rewarded{session};
+                    catch
+                        fprintf('Can''t load session %i because behav_data.rewarded is length %i\n', session, length(behav_data.rewarded))
+                        rewardedTrials = behav_data.rewarded{session};
+                    end
                     
                     % Load spiking data
                     spiketimes = data.spiketimes;
@@ -1552,7 +1557,7 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
             group = [ones(total_n_reactivated_cell_pairs,1); 2*ones(total_n_control_cell_pairs,1)];
             outcome = [ones(n_reactivated_cell_pairs_rr,1); zeros(total_n_reactivated_cell_pairs-n_reactivated_cell_pairs_rr,1); ...
                        ones(n_control_cell_pairs_rr,1); zeros(total_n_control_cell_pairs-n_control_cell_pairs_rr,1)];
-            [~, ~, p] = crosstab(group, outcome);
+            [~, chi2, p] = crosstab(group, outcome);
 
             % Print results
             fprintf('\nOverall, %i out of %i (%.2f%%) of reactivated cell pairs contain a reward-responsive vStr cell\n',...
@@ -1586,8 +1591,8 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                 n_control_cells_rr_after/total_n_control_cell_pairs*100)
 
             if p < 0.05
-                fprintf('\nA chi-squared test shows that the proportion of reactivated vs control cell pairs that contain a reward-responsive vStr cell is significantly different, p = %f\n',...
-                    p)
+                fprintf('\nA chi-squared test shows that the proportion of reactivated vs control cell pairs that contain a reward-responsive vStr cell is significantly different, chi^2(1) = %.2f, p = %f\n',...
+                    chi2, p)
             else
                 fprintf('\nA chi-squared test shows that the proportion of reactivated vs control cell pairs that contain a reward-responsive vStr cell is NOT significantly different, p = %f\n',...
                     p)
@@ -1939,16 +1944,38 @@ classdef ExplainedVarianceReactivation < RewardRelatedFiring
                                                 'random', [3, 4], ...
                                                 'nested', nesting, ...
                                                 'varnames', {'reactivated', 'expected_reward', 'neuron', 'rat'});
+            F_interaction = table(find(strcmp(table(:, 1), 'reactivated*expected_reward')), find(strcmp(table(1, :), 'F')));
+            F_interaction = F_interaction{1};
             p_interaction = table(find(strcmp(table(:, 1), 'reactivated*expected_reward')), find(strcmp(table(1, :), 'Prob>F')));
             p_interaction = p_interaction{1};
+            df_interaction = table(find(strcmp(table(:, 1), 'reactivated*expected_reward')), find(strcmp(table(1, :), 'd.f.')));
+            df_interaction = df_interaction{1};
+            
+            % Print results
+            if p_interaction < 0.05
+                fprintf('\nA mixed-effects nested ANOVA shows a significant interaction effect between cell-pair type (reactivated or not) and trial type (high- or medium-expected reward), F(%i) = %.2f, p = %f\n',...
+                    df_interaction, F_interaction, p_interaction)
+            else
+                fprintf('\nA mixed-effects nested ANOVA shows NO significant interaction effect between cell-pair type (reactivated or not) and trial type (high- or medium-expected reward), p = %f\n',...
+                    p_interaction)
+            end
                                             
             % Compute post-hoc tests
-            highReactivated = Y(:, exp_reward==1 & react==1);
-            highControl = Y(:, exp_reward==1 & react==2);
-            mediumReactivated = Y(:, exp_reward==2 & react==1);
-            mediumControl = Y(:, exp_reward==2 & react==2);
-            [~, p_high] = ttest2(highReactivated, highControl);
-            [~, p_medium] = ttest2(mediumReactivated, mediumControl);
+            if p_interaction < 0.05
+                highReactivated = Y(:, exp_reward==1 & react==1);
+                highControl = Y(:, exp_reward==1 & react==2);
+                mediumReactivated = Y(:, exp_reward==2 & react==1);
+                mediumControl = Y(:, exp_reward==2 & react==2);
+                [~, p_high, ~, stats_high] = ttest2(highReactivated, highControl);
+                [~, p_medium, ~, stats_medium] = ttest2(mediumReactivated, mediumControl);
+                t_high = stats_high.tstat;
+                df_high = stats_high.df;
+                t_medium = stats_medium.tstat;
+                df_medium = stats_medium.df;
+            else
+                p_high = NaN;
+                p_medium = NaN;
+            end
                                             
         end
         

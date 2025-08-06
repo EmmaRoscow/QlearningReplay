@@ -1,6 +1,6 @@
 
 classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
-    
+            
     properties
         ExplainedVarianceReactivationObj
         TestDataDir
@@ -1012,7 +1012,7 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                         
             % Test that the data is the expected size given number of neurons
             actualSize = size(perPairContribution);
-            expectedSize = [1, nNeurons^2];
+            expectedSize = [1, nchoosek(nNeurons, 2)];
             testCase.verifyEqual(actualSize, expectedSize);
             
             % Test that perPairContribution.cells contains the right data
@@ -1021,11 +1021,13 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                 actualSubfieldSize = size(perPairContribution(iField).cells);
                 testCase.verifyEqual(actualSubfieldSize, expectedSubfieldSize);
             end
+            expectedCellIdentities = mat2cell(nchoosek(1:nNeurons, 2), ones(1, nchoosek(nNeurons, 2)), 2);
             actualFirstCell = cellfun(@(x) x(1), {perPairContribution.cells});
-            expectedFirstCell = repelem(1:nNeurons, nNeurons);
+            expectedFirstCell = cellfun(@(x) x(1), expectedCellIdentities)';
             testCase.verifyEqual(actualFirstCell, expectedFirstCell);
             actualSecondCell = cellfun(@(x) x(2), {perPairContribution.cells});
-            expectedSecondCell = repmat(1:nNeurons, 1, nNeurons);
+            v = arrayfun(@(k) repmat(k, 1, nNeurons - k), 1:nNeurons-1, 'UniformOutput', false);
+            expectedSecondCell = cellfun(@(x) x(2), expectedCellIdentities)';
             testCase.verifyEqual(actualSecondCell, expectedSecondCell);
             
             % Test that perPairContribution.contribution contains the right data
@@ -1180,7 +1182,7 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                         
             % Test that the data is the expected size given number of neurons
             actualSize = size(perPairContribution);
-            expectedSize = [1, length(includeCells)^2];
+            expectedSize = [1, nchoosek(length(includeCells), 2)];
             testCase.verifyEqual(actualSize, expectedSize);
             
             % Test that perPairContribution.cells contains the right data
@@ -1189,11 +1191,13 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                 actualSubfieldSize = size(perPairContribution(iField).cells);
                 testCase.verifyEqual(actualSubfieldSize, expectedSubfieldSize);
             end
+            nIncludedCells = length(includeCells);
+            expectedCellIdentities = mat2cell(nchoosek(includeCells, 2), ones(1, nchoosek(nIncludedCells, 2)), 2);
             actualFirstCell = cellfun(@(x) x(1), {perPairContribution.cells});
-            expectedFirstCell = repelem(includeCells, length(includeCells));
+            expectedFirstCell = cellfun(@(x) x(1), expectedCellIdentities)';
             testCase.verifyEqual(actualFirstCell, expectedFirstCell);
             actualSecondCell = cellfun(@(x) x(2), {perPairContribution.cells});
-            expectedSecondCell = repmat(includeCells, 1, length(includeCells));
+            expectedSecondCell = cellfun(@(x) x(2), expectedCellIdentities)';
             testCase.verifyEqual(actualSecondCell, expectedSecondCell);
             
             % Test that perPairContribution.contribution contains the right data
@@ -1666,7 +1670,7 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
             testCase.verifyEmpty(restStartPOST);
             testCase.verifyEmpty(restStopPOST);
             
-        end
+        end       
         
         % Test that getFixedDurationImmobility handles there being one rest bout
         function testGetFixedDurationImmobility_singleBout(testCase)
@@ -2586,7 +2590,7 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
             
             end
         end
-                
+        
         % Test that intra-area EV-REV calculation returns different values depending on the ripple mode
         function testCalculateIntraAreaEVREV_differentRippleModes(testCase)
             
@@ -2923,6 +2927,7 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                 testCase.verifyError(@() func(testCase.TestDataDir), expectedErrorId);
                 
             end
+            
         end
         
         % Test error handling of intra-area EV-REV calculation with a missing rat
@@ -3246,7 +3251,8 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
                 {'Optimal', 'Legitimate', 'Legitimate'},...
                 {'Legitimate', 'Optimal', 'Legitimate'}}};
             reward_probs = {repmat({'high', 'medium', 'low'}, 1, 2)};
-            TestUtilities.saveMockBehaviouralData(behaviouralDataPath, 'A_rat', 'n_trials', n_trials, 'actions', actions, 'reward_probs', reward_probs, 'arm_values', arm_values);
+            rewarded = {[1, 1]};
+            TestUtilities.saveMockBehaviouralData(behaviouralDataPath, 'A_rat', 'n_trials', n_trials, 'actions', actions, 'reward_probs', reward_probs, 'arm_values', arm_values, 'rewarded', rewarded);
             
             % Mock ephys data
             dataPath = fullfile(testCase.TestDataDir, 'Rat_A', 'Session1');
@@ -3314,11 +3320,11 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
             
             % Verify that all effects are insignificant
             testCase.verifyTrue(isnan(p_interaction));
-            testCase.verifyTrue(p_medium > 0.05);
-            testCase.verifyTrue(p_high > 0.05);
+            testCase.verifyTrue(isnan(p_medium));
+            testCase.verifyTrue(isnan(p_high));
             
         end
-            
+        
         % Test mixedEffectsNestedAnova with an interaction between
         % cell-pair type and arm type
         function testMixedEffectsNestedAnova_interactionEffect(testCase)
@@ -3354,7 +3360,8 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
             
             % Mock event-triggered data: systematically different between
             % reactivated and control cell pairs, so main effect with no
-            % interaction effect
+            % interaction effect. Post-hoc tests should only be conducted
+            % if there is an interaction effect, so should be null
             rng(0);
             data1 = {random('Normal', 1, 1, 200, 1)};
             data2 = {random('Normal', 1, 1, 200, 1)};
@@ -3369,8 +3376,8 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
             
             % Verify post-hoc significance and no interaction effect
             testCase.verifyTrue(p_interaction > 0.05);
-            testCase.verifyTrue(p_medium < 0.05);
-            testCase.verifyTrue(p_high < 0.05);
+            testCase.verifyTrue(isnan(p_medium));
+            testCase.verifyTrue(isnan(p_high));
             
         end
 
@@ -3565,5 +3572,4 @@ classdef ExplainedVarianceReactivationTest < matlab.unittest.TestCase
         
     end
     
-    end    
-    
+end

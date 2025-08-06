@@ -15,6 +15,25 @@ classdef EphysAnalysis
 
     
     methods (Access = public)
+        
+        function sessions = getAllAvailableSessions(obj)
+            
+            % Returns indices for all sessions for which data is available
+                
+            % All sessions for which data is available
+            sessions.Quirinius = 1:17;
+            sessions.Severus = [5:7 9:13 15:17];
+            sessions.Trevor = [1:2 4:10 13:20];
+
+            % Check that there are no rats unaccounted for
+            for ratName = obj.inclusionCriteria.rats
+                if ~ismember(ratName{1}, fieldnames(sessions))
+                    warning(sprintf('No learning sessions known for rat "%s"', ratName{1}))
+                end
+            end
+                
+        end
+
                 
         % Load data
         function data = loadData(~, filepath)
@@ -309,9 +328,10 @@ classdef EphysAnalysis
             % and returns the proportion per rat
             %
             % Inputs
-            %   - varargin:                                  optionally, 'DataPath' along with the directory where data 
-            %                                                   for spike times and other data are
-            %                                                   stored (otherwise uses default path)
+            %   - DataPath:                                optional; the directory where data  for spike times and other data 
+            %                                                   are stored (otherwise uses default path)
+            %   - SessionFetcher:                       optional; a function that returns a structure listing all available
+            %                                                   sessions for all rats
             %   
             % Outputs
             %   - perRatRewardResponsiveRate:  structure with one field for each rat name per inclusion criteria, corresponding to each
@@ -321,8 +341,10 @@ classdef EphysAnalysis
             % Process path where data is stored
             p = inputParser;
             addParameter(p, 'DataPath', fullfile('.', 'data', 'ephys_data'), @(x) ischar(x) || isstring(x));
+            addParameter(p, 'SessionFetcher', @() obj.getAllAvailableSessions());
             parse(p, varargin{:});
             datapath = p.Results.DataPath;
+            allSessions = p.Results.SessionFetcher();
             
             % Create variables for computing rate of reward-responsiveness
             nRats = length(obj.inclusionCriteria.rats);
@@ -333,8 +355,6 @@ classdef EphysAnalysis
             overallRewardResponsiveBeforeAndAfterArrivalTotal = 0;
             overallTotal = 0;
             
-            allSessions = obj.getAllAvailableSessions();
-
             for iRat = 1:length(obj.inclusionCriteria.rats)
 
                 ratName = obj.inclusionCriteria.rats{iRat};

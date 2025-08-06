@@ -425,8 +425,13 @@ classdef EphysAnalysisTest < matlab.unittest.TestCase
                 'CPexitTimes', CPExitTimes_ratB_sess2,...
                 'nNAcUnits', nNAcUnits_ratB_sess2)
             
+            % Create a mock of available sessions function
+            function sessions = getAllAvailableSessions()
+                sessions = testCase.EphysObj.sessionsForBroadAnalysis;
+            end
+            
             % Call the method
-            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir);
+            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir, 'SessionFetcher', getAllAvailableSessions);
             
             % Define expected perRatRewardResponsiveRate
             expectedPerRatRate = struct('A_rat', 2/3, 'B_rat', 1.0);
@@ -472,9 +477,14 @@ classdef EphysAnalysisTest < matlab.unittest.TestCase
                 'RarrivalTimes', rewardArrivalTimes,...
                 'CPexitTimes', CPExitTimes,...
                 'nNAcUnits', nNAcUnits)
-                                    
+            
+             % Create a mock of available sessions function
+            function sessions = getAllAvailableSessions()
+                sessions = testCase.EphysObj.sessionsForBroadAnalysis;
+            end
+            
             % Call the method
-            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir);
+            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir, 'SessionFetcher', getAllAvailableSessions);
             
             % Define expected perRatRewardResponsiveRate
             expectedPerRatRate = struct('A_rat', NaN, 'B_rat', 0.5);
@@ -490,10 +500,15 @@ classdef EphysAnalysisTest < matlab.unittest.TestCase
             % Mock inclusion criteria and sessions
             testCase.EphysObj.inclusionCriteria.rats = {'A_rat'};
             testCase.EphysObj.sessionsForBroadAnalysis = struct('A_rat', [1]);
+            
+            % Create a mock of available sessions function
+            function sessions = getAllAvailableSessions()
+                sessions = testCase.EphysObj.sessionsForBroadAnalysis;
+            end
                         
             % Call the method
             expectedErrorID = 'EphysAnalysis:load:couldNotFindPath';
-            testCase.verifyError(@() testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir), expectedErrorID);
+            testCase.verifyError(@() testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir, 'SessionFetcher', getAllAvailableSessions), expectedErrorID);
             
         end
         
@@ -517,9 +532,15 @@ classdef EphysAnalysisTest < matlab.unittest.TestCase
                 'CPexitTimes', CPExitTimes,...
                 'nNAcUnits', nNAcUnits)
                                     
-            % Call the method
-            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir);
+            % Create a mock of available sessions function
+            function sessions = getAllAvailableSessions()
+                sessions = testCase.EphysObj.sessionsForBroadAnalysis;
+            end
             
+            % Call the method
+            perRatRate = testCase.EphysObj.countRewardResponsiveCells('DataPath', testCase.TestDataDir, 'SessionFetcher', getAllAvailableSessions);
+
+                        
             % Define expected perRatRewardResponsiveRate
             expectedPerRatRate = struct('A_rat', 0);
             
