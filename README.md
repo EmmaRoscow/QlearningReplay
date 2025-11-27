@@ -1,6 +1,6 @@
 README
 
-Contains code and data for reproducing the analyses presented in Roscow et al. 2025. All code written in MATLAB, developed and tested in MATLAB R2016a.
+Contains code and data for reproducing the analyses presented in Roscow et al. 2025 (rdcu.be/eRxNz). All code written in MATLAB, developed and tested in MATLAB R2016a.
 
 Repo structure is as follows.
 
@@ -36,3 +36,6 @@ Recommended use:
 * To explore the electrophysiological data analysis, load 'QlearningReplay/data/explainedVarianceReactivationAnalysis.mat'
 * To run the Q-learning modelling from scratch, run the scripts with names starting 'runOptimisation...' in 'QlearningReplay/code/q_learning_optimisation'. Optimisation requires the MATLAB package bads (https://github.com/acerbilab/bads)
 * To run the electrophysiological data analysis from scratch, run 'QlearningReplay/code/ephys/main_ephys_script.m'
+
+
+Roscow, E.L., Howe, T., Lepora, N.F. et al. Post-learning replay of hippocampal-striatal activity is biased by reward-prediction signals. Nat Commun 16, 10394 (2025). https://doi.org/10.1038/s41467-025-65354-2
